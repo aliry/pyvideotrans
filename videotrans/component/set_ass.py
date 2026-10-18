@@ -650,7 +650,8 @@ class SET_ASS(QDialog):
             'MarginL': self.margin_l_spin.value(),
             'MarginR': self.margin_r_spin.value(),
             'MarginV': self.margin_v_spin.value(),
-            'Encoding': 1
+            # -1 lets libass detect RTL base direction (Persian/Arabic/Hebrew); other values force LTR
+            'Encoding': -1
         }
         return style
 
