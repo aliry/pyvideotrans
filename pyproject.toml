@@ -296,6 +296,10 @@ override-dependencies = [
 	"google-cloud-storage==3.12.0",
 	"torchcodec ; sys_platform == 'never'",
 	"pythonnet ; sys_platform == 'win32'",
+	"pynini ; sys_platform != 'darwin'",
+	"WeTextProcessing ; sys_platform != 'darwin'",
+	# legacy name of soundfile; both install soundfile.py and the 0.9 copy can't find soundfile 0.13's bundled libsndfile_arm64.dylib
+	"pysoundfile ; sys_platform != 'darwin'",
 ]
 
 index-strategy = "unsafe-best-match"
@@ -329,6 +333,12 @@ torchaudio = [
 
 pynini = [
     { url = "https://github.com/billwuhao/pynini-windows-wheels/releases/download/v2.1.6.post1/pynini-2.1.6.post1-cp310-cp310-win_amd64.whl", marker = "sys_platform == 'win32'" }
+]
+
+# Apple Silicon: the default macosx_14_0 wheel's Fortran extensions (propack, odepack, cobyla...) fail to load on macOS 27
+# ("__thread_bss has a zero-fill section type, but offset field is not zero"); the macosx_12_0 build of the same version loads fine
+scipy = [
+    { url = "https://files.pythonhosted.org/packages/a0/6e/0c3bf90fae0e910c274db43304ebe25a6b391327f3f10b5dcc638c090795/scipy-1.15.3-cp310-cp310-macosx_12_0_arm64.whl", marker = "sys_platform == 'darwin' and platform_machine == 'arm64'" }
 ]
 
 
