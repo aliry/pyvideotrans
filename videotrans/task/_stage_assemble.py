@@ -82,7 +82,7 @@ class AssembleMixin:
                 "-i",
                 self.cfg.name,
                 "-vn",
-                "-b:a", "128k",
+                "-b:a", self._audio_bitrate(),
                 "-c:a",
                 "aac",
                 self.cfg.source_wav_output
@@ -107,7 +107,7 @@ class AssembleMixin:
                 "-y",
                 "-i",
                 os.path.basename(self.cfg.target_wav),
-                "-ac", "2", "-b:a", "128k", "-c:a", "aac",
+                "-ac", "2", "-b:a", self._audio_bitrate(), "-c:a", "aac",
                 os.path.basename(target_m4a)
             ]
             self.signal(text=tr("Process voiceover for embedding..."))
@@ -161,7 +161,7 @@ class AssembleMixin:
                 "-i",
                 target_m4a_basename
             ]
-            enc_qua = ['-crf', f'{settings.get("crf", 23)}', '-preset', settings.get('preset', 'medium')]
+            enc_qua = self._soft_enc_args()
 
             fps_mode=None
             if settings.get('fps_mode')=='cfr':
@@ -289,8 +289,21 @@ class AssembleMixin:
         if duration_ms>0 and v_a_offset>100:
             cmd.extend(['-af', f'apad=pad_dur={v_a_offset/1000.0}'])
 
-        cmd.extend(['-c:a', 'aac', '-b:a', '128k',output])
+        cmd.extend(['-c:a', 'aac', '-b:a', self._audio_bitrate(),output])
         return runffmpeg(cmd)
+
+    def _audio_bitrate(self) -> str:
+        # 重新编码音频时沿用原始音频码率，未知时 128k
+        audio_bitrate = self.video_info.get('audio_bitrate', 0)
+        return f'{audio_bitrate}' if audio_bitrate else '128k'
+
+    def _soft_enc_args(self, _preset=None) -> list:
+        # 有原始视频码率时按原码率编码，使输出码率与原视频一致；未知时按 crf 质量编码
+        _preset = _preset or settings.get('preset', 'medium')
+        video_bitrate = self.video_info.get('video_bitrate', 0)
+        if video_bitrate:
+            return ['-b:v', f'{video_bitrate}', '-preset', _preset]
+        return ['-crf', f'{settings.get("crf", 23)}', '-preset', _preset]
 
     def _hebing_pro(self, protxt) -> None:
         while 1:
@@ -343,7 +356,7 @@ class AssembleMixin:
 
         if _preset not in ['fast', 'slow', 'medium']:
             _preset = 'medium'
-        enc_args = ['-crf', _crf, '-preset', _preset]
+        enc_args = self._soft_enc_args(_preset)
 
         PRESET_MAP = {
             'nvenc': {'fast': 'p2', 'medium': 'p4', 'slow': 'p7'},
@@ -365,8 +378,12 @@ class AssembleMixin:
             return global_args, vf_string, vcodec, enc_args
         if hw_type in ['videotoolbox']:
             vcodec = "h264_videotoolbox" if codec == '264' else "hevc_videotoolbox"
-            quality = int(100 - (int(_crf) * 1.4))
-            enc_args = ['-q:v', f'{int(max(1, min(quality, 100)))}']
+            video_bitrate = self.video_info.get('video_bitrate', 0)
+            if video_bitrate:
+                enc_args = ['-b:v', f'{video_bitrate}']
+            else:
+                quality = int(100 - (int(_crf) * 1.4))
+                enc_args = ['-q:v', f'{int(max(1, min(quality, 100)))}']
             return global_args, vf_string, vcodec, enc_args
 
         if hw_type in ['qsv', 'amf', 'vaapi']:

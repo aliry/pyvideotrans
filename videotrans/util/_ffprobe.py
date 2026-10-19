@@ -45,6 +45,19 @@ def runffprobe(cmd):
     raise FFmpegError(f"ffprobe ran successfully but produced no output. {cmd=}")
 
 
+def _stream_bitrate(stream) -> int:
+    # mp4 等容器直接给出 bit_rate；mkv/webm 只在统计标签 BPS / BPS-<lang> 中给出
+    candidates = [stream.get('bit_rate')]
+    candidates += [v for k, v in (stream.get('tags') or {}).items() if k.upper().startswith('BPS')]
+    for value in candidates:
+        try:
+            if value and int(value) > 0:
+                return int(value)
+        except (TypeError, ValueError):
+            continue
+    return 0
+
+
 def get_video_info(mp4_file, *, video_fps=False, video_scale=False, video_time=False, get_codec=False):
     from videotrans.configure.excepts import FFmpegError
     if not Path(mp4_file).exists():
@@ -78,7 +91,10 @@ def get_video_info(mp4_file, *, video_fps=False, video_scale=False, video_time=F
         "streams_len": len(out['streams']),
         "streams_audio": 0,
         "video_streams": 0,
-        "color": "yuv420p"
+        "color": "yuv420p",
+        # 原始码率 bps，未知时为 0
+        "video_bitrate": 0,
+        "audio_bitrate": 0
     }
     try:
         _duration = out['streams'][0].get('duration')
@@ -108,10 +124,18 @@ def get_video_info(mp4_file, *, video_fps=False, video_scale=False, video_time=F
     result['streams_audio'] = len(audio_streams)
     if audio_streams:
         result['audio_codec_name'] = audio_streams[0].get('codec_name', "")
+        result['audio_bitrate'] = _stream_bitrate(audio_streams[0])
 
     if video_stream:
         result['video_streams'] = 1
         result['video_codec_name'] = video_stream.get('codec_name', "")
+        result['video_bitrate'] = _stream_bitrate(video_stream)
+        if not result['video_bitrate']:
+            # 视频流未给出码率时，用容器总码率减去全部音频码率估算
+            total = _stream_bitrate(out.get('format') or {})
+            audio_total = sum(_stream_bitrate(s) for s in audio_streams)
+            if total > audio_total:
+                result['video_bitrate'] = total - audio_total
         result['width'] = int(video_stream.get('width', 0))
         result['height'] = int(video_stream.get('height', 0))
         result['color'] = video_stream.get('pix_fmt', 'yuv420p').lower()
